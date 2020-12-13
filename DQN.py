@@ -290,7 +290,7 @@ class DQNAgent():
                 self.target_net.load_state_dict(self.main_net.state_dict())
                 durations, total_scores = self.evaluation()
                 writer.add_scalar("Evaluation Per 10 Trainings: Scores", total_scores, num_evals)
-                writer.add_scalar("Evaluation Per 10 Trainings: Scores", durations, num_evals)
+                writer.add_scalar("Evaluation Per 10 Trainings: Durations", durations, num_evals)
                 num_evals += 1
         writer.close()
         self.env.close()
