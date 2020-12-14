@@ -10,6 +10,7 @@ import os
 import cv2
 import matplotlib.pyplot as plt
 import pandas as pd
+from tqdm import tqdm
 
 device = torch.device("cuda:0")
 dtype = torch.float
@@ -89,11 +90,8 @@ class Atari_Wrapper(gym.Wrapper):
         if num_frames == self.k:
             self.frame_stack = np.stack(frames)
         elif num_frames > self.k:
-<<<<<<< HEAD
             self.frame_stack = np.array(frames[-self.k::])
-=======
-            self.frame_stack = np.array(frames[-k::])
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
+            self.frame_stack = np.array(frames[-self.k::])
         else:  # mostly used when episode ends
             # shift the existing frames in the framestack to the front=0 (0->k, index is time)
             self.frame_stack[0: self.k - num_frames] = self.frame_stack[num_frames::]
@@ -222,11 +220,8 @@ class Env_Runner:
 
             self.ob = torch.tensor(self.ob)  # uint8
             action = self.agent.e_greedy(
-<<<<<<< HEAD
                 self.ob.to(device).to(dtype).unsqueeze(0) / 255)  # float32+norm ob.to(device).to(dtype).unsqueeze(0) / 255)
-=======
-                self.ob.to(dtype).unsqueeze(0) / 255)  # float32+norm ob.to(device).to(dtype).unsqueeze(0) / 255)
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
+                # self.ob.to(dtype).unsqueeze(0) / 255)  # float32+norm ob.to(device).to(dtype).unsqueeze(0) / 255)
             action = action.detach().cpu().numpy()
 
             obs.append(self.ob)
@@ -266,33 +261,21 @@ if __name__ == '__main__':
     env_name = 'MsPacman-v0'
 
     # hyperparameter
-<<<<<<< HEAD
     N = 1
     num_stacked_frames = 4
     replay_memory_size = 2500 * N  # *100
     min_replay_size_to_update = 250 * N # *100
-=======
-    num_stacked_frames = 4
-    replay_memory_size = 2500  # *100
-    min_replay_size_to_update = 250  # *100
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
     lr = 6e-5
     gamma = 0.99
     minibatch_size = 32
     steps_rollout = 16
     start_eps = 1
     final_eps = 0.1
-<<<<<<< HEAD
     final_eps_frame = 1000 * N # *100
     total_steps = 20000 * N # *100
     target_net_update = 625  # 10000 steps
     save_model_steps = 5000 * N  # *100
-=======
-    final_eps_frame = 1000  # *100
-    total_steps = 20000  # *100
-    target_net_update = 625  # 10000 steps
-    save_model_steps = 5000  # *100
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
+
 
     # init
     raw_env = gym.make(env_name)
@@ -303,13 +286,8 @@ if __name__ == '__main__':
 
     eps_interval = start_eps - final_eps
 
-<<<<<<< HEAD
     agent = Agent(in_channels, num_actions, start_eps).to(device)  # .to(device)
     target_agent = Agent(in_channels, num_actions, start_eps).to(device)  # .to(device)
-=======
-    agent = Agent(in_channels, num_actions, start_eps)  # .to(device)
-    target_agent = Agent(in_channels, num_actions, start_eps)  # .to(device)
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
     target_agent.load_state_dict(agent.state_dict())
 
     replay = Experience_Replay(replay_memory_size)
@@ -321,6 +299,7 @@ if __name__ == '__main__':
     num_model_updates = 0
 
     start_time = time.time()
+    pbar = tqdm(total_steps)
     while num_steps < total_steps:
 
         # set agent exploration | cap exploration after x timesteps to final epsilon
@@ -381,6 +360,7 @@ if __name__ == '__main__':
             end_time = time.time()
             print(f'*** total steps: {num_steps} | time(50K): {end_time - start_time} ***')
             start_time = time.time()
+            pbar.update()
 
         # save the dqn after some time
         if num_steps % save_model_steps < steps_rollout:
@@ -403,13 +383,8 @@ if __name__ == '__main__':
     agent.eval()
     imgs = []
     for step in range(steps):
-<<<<<<< HEAD
         action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0).to(device) / 255)
         # action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0) / 255)
-=======
-        # action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0).to(device) / 255)
-        action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0) / 255)
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
         action = action.detach().cpu().numpy()
         # action = env.action_space.sample()
         env.render()
@@ -437,11 +412,8 @@ if __name__ == '__main__':
             continue
 
         print("load file name", filename)
-<<<<<<< HEAD
         agent = torch.load(dir + filename).to(device)  # .to(device)
-=======
-        agent = torch.load(dir + filename)  # .to(device)
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
+
         agent.set_epsilon(eval_epsilon)
         agent.eval()
 
@@ -453,13 +425,9 @@ if __name__ == '__main__':
         returns = []
         while num_episode < total_episodes:
 
-<<<<<<< HEAD
             action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0).to(device) / 255)
             # action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0) / 255)
-=======
-            # action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0).to(device) / 255)
-            action = agent.e_greedy(torch.tensor(ob, dtype=dtype).unsqueeze(0) / 255)
->>>>>>> 4e934a2e96d000300ef5b943a566a412e3f54588
+
             action = action.detach().cpu().numpy()
 
             ob, _, done, info, _ = env.step(action, render=True)  # set render to false
