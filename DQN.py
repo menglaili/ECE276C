@@ -6,7 +6,7 @@ import os
 # import matplotlib
 # import matplotlib.pyplot as plt
 from PIL import Image
-# import argparse
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,10 +15,18 @@ import torchvision.transforms as T
 from collections import namedtuple
 from torch.utils.tensorboard import SummaryWriter
 from itertools import count
+import cv2
+import imageio
 import warnings
 warnings.filterwarnings("ignore")
 
 
+parser = argparse.ArgumentParser(description='DQN_Pacman')
+parser.add_argument('--load', default=0, type=int, metavar='N',
+                    help='0: Dont load model; 1: load model')
+
+
+print(torch.cuda.is_available())
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 RESIZE = T.Compose([T.ToPILImage(),
@@ -93,7 +101,7 @@ class Replay():
 
         while self.cntr < self.init_length:
             done = False
-            screen = env.render(mode='rgb_array')
+            screen = self.env.render(mode='rgb_array')
             state = edit_screen2state(screen)
             while not done:
                 action = torch.tensor([[self.env.action_space.sample()]], device=DEVICE, dtype=torch.long)
@@ -101,7 +109,7 @@ class Replay():
                 reward = torch.tensor([reward], device=DEVICE)
 
                 if not done:
-                    screen = env.render(mode='rgb_array')
+                    screen = self.env.render(mode='rgb_array')
                     next_state = edit_screen2state(screen)
                     self.buffer_add(state, next_state, action, reward)
                 else:
@@ -143,7 +151,7 @@ class DQNAgent():
             init_length=5000,
             EPS_START=0.9,
             EPS_END=0.05,
-            EPS_DECAY=200,
+            EPS_DECAY=160,
             Target_update=10
     ):
         """
@@ -163,7 +171,7 @@ class DQNAgent():
         self.eps_e = EPS_END
         self.eps_decay = EPS_DECAY
         self.target_update = Target_update
-
+        self.num_evals = 1
         # For updating the epsilon
         self.eps_step = 0
 
@@ -235,14 +243,13 @@ class DQNAgent():
 
         return loss.item()
 
-    def train(self, num_games, log_dir):
+    def train(self, last_i, num_games, log_dir):
         """
         Train the policy for the given number of iterations
         :param num_games:The number of steps to train the policy for
         """
         writer = SummaryWriter(log_dir)
-        num_evals = 1
-        for i in tqdm(range(num_games)):
+        for i in tqdm(range(last_i+1, num_games)):
 
             #             # obtain action
             #             action_mean = self.actor.forward(torch.FloatTensor(state)).cpu().detach().numpy()
@@ -255,8 +262,7 @@ class DQNAgent():
             #         writer.add_graph(self.main_net, state)
             #         writer.add_graph(self.target_net, state)
 
-            rewards = []
-
+            rewards = 0
             for t in count():
                 # obtain action
                 action = self.select_action_train(state)
@@ -265,7 +271,7 @@ class DQNAgent():
                 # duration
 
                 # Reward
-                rewards.append(reward)
+                rewards = rewards + reward
                 reward = torch.tensor([reward], device=DEVICE)
 
                 if not done:
@@ -274,26 +280,34 @@ class DQNAgent():
                     state = next_state
                 else:
                     self.ReplayBuffer.buffer_add(state, None, action, reward)
-
+#                     cum_rewards = sum(rewards)
                     writer.add_scalar("Number of moves Per Game", (t+1), i)
-                    writer.add_scalar("total of rewards Per Game", sum(rewards), i)
+                    writer.add_scalar("total of rewards Per Game", rewards, i)
 
-                    print("Episodes-{}| scores={}| durations={}".format(num_games, sum(rewards), (t+1)))
+                    print("Episodes-{}| scores={}| durations={}".format(i, rewards, (t+1)))
 
                 # update the network
                 loss = self.update_network()
                 # writer.add_scalar("Loss", loss, i)
                 if done:
                     break
-
-            if num_games % self.target_update == 0 or i == num_games - 1:
+            if i % self.target_update == 0 or i == num_games - 1:
                 self.target_net.load_state_dict(self.main_net.state_dict())
                 durations, total_scores = self.evaluation()
-                writer.add_scalar("Evaluation Per 10 Trainings: Scores", total_scores, num_evals)
-                writer.add_scalar("Evaluation Per 10 Trainings: Durations", durations, num_evals)
-                num_evals += 1
+                writer.add_scalar("Evaluation Per 10 Trainings: Scores", total_scores, self.num_evals)
+                writer.add_scalar("Evaluation Per 10 Trainings: Durations", durations, self.num_evals)
+                torch.save({
+                    'episode': i,
+                    'step_done': self.eps_step,
+                    'num_eval': self.num_evals,
+                    'model_state_dict_target': self.target_net.state_dict(),
+                    'model_state_dict_policy': self.main_net.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    }, 'models/dqn_pacman_b256.pth')
+                self.num_evals += 1
         writer.close()
         self.env.close()
+        self.gif_generator()
 
     def evaluation(self):
         _ = self.test_env.reset()
@@ -311,23 +325,66 @@ class DQNAgent():
             total_rewards += reward
 
         return step, total_rewards
+    
+    def gif_generator(self):
+        steps = 5000
+        _ = self.test_env.reset()
+        state = self.test_env.render(mode='rgb_array')
+        
+        imgs = []
+        done = False
+        for step in range(steps):
+        #     here you should generate your action
+        #     env.render(mode="rgb_array")
+            state = edit_screen2state(state)
+            action = self.main_net.forward(state).max(1)[1].view(1, 1)
+            state, _, done, _ = self.test_env.step(action.item())
 
+            if done:
+                state = self.test_env.reset()
+            img_tmp = np.asarray(state)
+        #     img_tmp = img_tmp.swapaxes(0,1).swapaxes(1,2)
+            imgs.append(img_tmp)
 
-if __name__ == "__main__":
+        self.test_env.close()
+        imageio.mimwrite('myfile.gif', imgs)
+
+        
+def main():
+    global args
+    args = parser.parse_args()
+    
     env = gym.make('MsPacman-v0').unwrapped
-
+ 
     pacman = DQNAgent(
         env,
-        learning_rate=1e-3,
+        learning_rate=1e-2,
         gamma=0.999,
         batch_size=256,
-        buffer_size=50000,
-        init_length=5000
+        buffer_size=20000,
+        init_length=2000
     )
     # Train the policy
     result_dir = "data/"
-    log_dir = os.path.join(result_dir, "log160")
+    log_dir = os.path.join(result_dir, "logfinal")
+    print(log_dir)
     os.makedirs(log_dir, exist_ok=True)
-    pacman.train(int(600), log_dir)
+#     os.makedirs('models/dqn_pacman', exist_ok=True)
+    last_i = -1
+    if args.load == 1:
+        checkpoint = torch.load(os.path.join('models','dqn_pacman_b256.pth'), map_location=DEVICE)
+        last_i = checkpoint['episode']
+        pacman.eps_decay = 160
+        print("pacman eps_decay:{}".format(pacman.eps_decay))
+        pacman.eps_step = checkpoint['step_done']
+        pacman.main_net.load_state_dict(checkpoint['model_state_dict_policy'])
+        pacman.target_net.load_state_dict(checkpoint['model_state_dict_target'])
+        pacman.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        print('loaded')
+    pacman.train(int(last_i), int(200), log_dir)
     env.close()
+
+
+if __name__ == "__main__":
+    main()
 
